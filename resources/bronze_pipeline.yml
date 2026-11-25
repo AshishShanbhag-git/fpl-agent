@@ -1,0 +1,17 @@
+# Lakeflow Declarative Pipeline that turns landing JSON files into bronze Delta tables.
+# Triggered (not continuous): it runs only when the ingest job calls it, processes the new files, then stops
+# so it doesn't burn the Free Edition compute quota.
+resources:
+  pipelines:
+    fpl_bronze:
+      name: fpl-bronze
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.bronze.name}
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      configuration:
+        fpl.catalog: ${var.catalog}
+      libraries:
+        - file:
+            path: ../src/pipelines/bronze.py
