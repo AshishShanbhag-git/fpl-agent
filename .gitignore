@@ -1,0 +1,26 @@
+# --- Secrets / credentials: never commit these ---
+.databrickscfg
+.env
+*.pem
+*.key
+
+# --- Databricks Asset Bundle working files (regenerated on each deploy) ---
+.databricks/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Local data downloads (real data lives in the Databricks Volume) ---
+data/
+*.parquet
+
+# --- Editor / OS junk ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

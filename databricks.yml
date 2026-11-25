@@ -1,0 +1,24 @@
+# Databricks Asset Bundle: the "everything as code" definition of this project.
+# `databricks bundle deploy` reads this file (plus everything under resources/)
+# and creates or updates the matching objects in your workspace.
+bundle:
+  name: fpl-agent
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog that holds all project data
+    default: fpl
+
+targets:
+  # A single target for now: this is a personal project, and the ingestion job must
+  # really run on its schedule so we start collecting news/price history straight away.
+  # The workspace address comes from the DEFAULT CLI profile (~/.databrickscfg),
+  # so no personal URL is committed to the public repo.
+  prod:
+    default: true
+    workspace:
+      profile: DEFAULT
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

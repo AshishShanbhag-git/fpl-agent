@@ -1,0 +1,45 @@
+# Unity Catalog layout (medallion architecture).
+# raw    -> untouched API files exactly as downloaded (the Volume below)
+# bronze -> raw JSON loaded into tables
+# silver -> cleaned, typed tables (players, teams, fixtures, news snapshots, ...)
+# gold   -> model-ready features, xPts predictions, recommendations
+# ml     -> registered models
+#
+# prevent_destroy: these hold irreplaceable history (FPL only shows *today's* news/prices),
+# so `bundle destroy` must never delete them.
+resources:
+  schemas:
+    raw:
+      catalog_name: ${var.catalog}
+      name: raw
+      comment: Untouched FPL API snapshots
+      lifecycle:
+        prevent_destroy: true
+    bronze:
+      catalog_name: ${var.catalog}
+      name: bronze
+      comment: Raw JSON loaded into Delta tables
+      lifecycle:
+        prevent_destroy: true
+    silver:
+      catalog_name: ${var.catalog}
+      name: silver
+      comment: Cleaned, typed entity tables
+    gold:
+      catalog_name: ${var.catalog}
+      name: gold
+      comment: Features, xPts and recommendations
+    ml:
+      catalog_name: ${var.catalog}
+      name: ml
+      comment: Registered ML models
+
+  volumes:
+    landing:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.raw.name}
+      name: landing
+      volume_type: MANAGED
+      comment: Timestamped JSON files downloaded from the FPL API
+      lifecycle:
+        prevent_destroy: true

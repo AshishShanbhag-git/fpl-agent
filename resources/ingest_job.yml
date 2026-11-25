@@ -1,0 +1,24 @@
+# Scheduled job: every 6 hours, snapshot the FPL API into the landing Volume.
+# No cluster is configured, so it runs on serverless compute (the only option on Free Edition).
+resources:
+  jobs:
+    fpl_ingest:
+      name: fpl-ingest
+      description: Snapshot FPL API endpoints into /Volumes/${var.catalog}/raw/landing every 6 hours
+
+      schedule:
+        quartz_cron_expression: "0 15 0/6 * * ?"   # 00:15, 06:15, 12:15, 18:15
+        timezone_id: Europe/London
+        pause_status: UNPAUSED
+
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+
+      tasks:
+        - task_key: fetch_fpl_api
+          notebook_task:
+            notebook_path: ../src/ingest/fetch_fpl.py
+            base_parameters:
+              catalog: ${var.catalog}
+          max_retries: 2
+          min_retry_interval_millis: 300000          # wait 5 min before retrying
