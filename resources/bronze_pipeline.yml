@@ -1,12 +1,15 @@
-# Lakeflow Declarative Pipeline that turns landing JSON files into bronze Delta tables.
-# Triggered (not continuous): it runs only when the ingest job calls it, processes the new files, then stops
+# Lakeflow Declarative Pipeline: landing JSON files -> bronze tables -> silver tables.
+# Triggered (not continuous): it runs only when the ingest job calls it, processes the new data, then stops
 # so it doesn't burn the Free Edition compute quota.
+#
+# Note: the resource key is still `fpl_bronze` (it started as bronze-only). Renaming the key would make
+# the bundle delete and recreate the pipeline, and with it the tables, so only the display name changed.
 resources:
   pipelines:
     fpl_bronze:
-      name: fpl-bronze
+      name: fpl-transform
       catalog: ${var.catalog}
-      schema: ${resources.schemas.bronze.name}
+      schema: ${resources.schemas.bronze.name}     # default schema; silver tables use fully-qualified names
       serverless: true
       continuous: false
       channel: CURRENT
@@ -15,3 +18,7 @@ resources:
       libraries:
         - file:
             path: ../src/pipelines/bronze.py
+        - file:
+            path: ../src/pipelines/silver.py
+      lifecycle:
+        prevent_destroy: true

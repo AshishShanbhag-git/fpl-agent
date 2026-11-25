@@ -1,4 +1,4 @@
-# Scheduled job: every 6 hours, snapshot the FPL API into the landing Volume, then load it into bronze.
+# Scheduled job: every 6 hours, snapshot the FPL API into the landing Volume, then refresh bronze + silver.
 # No cluster is configured, so it runs on serverless compute (the only option on Free Edition).
 resources:
   jobs:
@@ -23,8 +23,8 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 300000          # wait 5 min before retrying
 
-        # Runs only after the fetch succeeds: loads the new files into bronze tables.
-        - task_key: load_bronze
+        # Runs only after the fetch succeeds: loads the new files into bronze, then refreshes silver.
+        - task_key: transform
           depends_on:
             - task_key: fetch_fpl_api
           pipeline_task:
