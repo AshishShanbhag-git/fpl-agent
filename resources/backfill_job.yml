@@ -1,0 +1,23 @@
+# Manual (unscheduled) job: load past seasons from vaastav/Fantasy-Premier-League, then refresh the tables.
+# Run with:  databricks bundle run fpl_backfill_history
+# Re-running is safe: silver uses the latest backfill of each season, so nothing is double-counted.
+resources:
+  jobs:
+    fpl_backfill_history:
+      name: fpl-backfill-history
+      description: One-off load of historical seasons (vaastav) into the landing Volume, then bronze/silver refresh
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      tasks:
+        - task_key: backfill_vaastav
+          notebook_task:
+            notebook_path: ../src/ingest/backfill_vaastav.py
+            base_parameters:
+              catalog: ${var.catalog}
+              seasons: "2020-21,2021-22,2022-23,2023-24,2024-25,2025-26"
+        - task_key: transform
+          depends_on:
+            - task_key: backfill_vaastav
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.fpl_bronze.id}
+            full_refresh: false

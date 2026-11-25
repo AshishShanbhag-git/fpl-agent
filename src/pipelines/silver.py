@@ -252,3 +252,133 @@ def fixtures():
         FROM {BRONZE}.fixtures
         WHERE _snapshot_ts = (SELECT max(_snapshot_ts) FROM {BRONZE}.fixtures)
     """)
+
+
+# --------------------------------------------------------------------------------------------
+# Per-gameweek player history: past seasons (vaastav) + current season (FPL element-summary)
+# --------------------------------------------------------------------------------------------
+# Columns shared by both sources: (name, SQL type). Missing stats in old seasons become NULL.
+GW_STAT_COLUMNS = [
+    ("minutes", "INT"), ("starts", "INT"), ("total_points", "INT"),
+    ("goals_scored", "INT"), ("assists", "INT"), ("clean_sheets", "INT"), ("goals_conceded", "INT"),
+    ("own_goals", "INT"), ("penalties_saved", "INT"), ("penalties_missed", "INT"),
+    ("yellow_cards", "INT"), ("red_cards", "INT"), ("saves", "INT"), ("bonus", "INT"), ("bps", "INT"),
+    ("clearances_blocks_interceptions", "INT"), ("recoveries", "INT"), ("tackles", "INT"),
+    ("defensive_contribution", "INT"),
+    ("influence", "DOUBLE"), ("creativity", "DOUBLE"), ("threat", "DOUBLE"), ("ict_index", "DOUBLE"),
+    ("expected_goals", "DOUBLE"), ("expected_assists", "DOUBLE"),
+    ("expected_goal_involvements", "DOUBLE"), ("expected_goals_conceded", "DOUBLE"),
+    ("selected", "BIGINT"), ("transfers_in", "BIGINT"), ("transfers_out", "BIGINT"), ("transfers_balance", "BIGINT"),
+]
+_VARIANT_TYPE = {"INT": "int", "BIGINT": "bigint", "DOUBLE": "double"}
+
+
+def _current_stats(var: str) -> str:
+    return ",\n               ".join(
+        f"try_variant_get({var}, '$.{c}', '{_VARIANT_TYPE[t]}') AS {c}" for c, t in GW_STAT_COLUMNS
+    )
+
+
+def _hist_stats(alias: str) -> str:
+    return ",\n               ".join(f"try_cast({alias}.{c} AS {t}) AS {c}" for c, t in GW_STAT_COLUMNS)
+
+
+@dlt.table(
+    name=f"{SILVER}.player_gw_history",
+    comment=(
+        "One row per player per fixture played (or squad-listed) in a gameweek. Double gameweeks have two rows. "
+        "Past seasons from vaastav/Fantasy-Premier-League; current season from FPL element-summary. "
+        "Key = (season, player_id, fixture_id). price is the price at that gameweek in £m."
+    ),
+    table_properties={"quality": "silver"},
+)
+@dlt.expect_or_drop("has keys", "season IS NOT NULL AND player_id IS NOT NULL AND fixture_id IS NOT NULL")
+@dlt.expect("known position", "position IN ('GKP','DEF','MID','FWD')")
+def player_gw_history():
+    current_season_expr = SEASON_EXPR.replace("snapshot_ts", "es._snapshot_ts")
+    return spark.sql(f"""
+        WITH
+        -- ---------- current season: latest daily element-summary snapshot ----------
+        es AS (
+          SELECT * FROM {BRONZE}.element_summary
+          WHERE _snapshot_ts = (SELECT max(_snapshot_ts) FROM {BRONZE}.element_summary)
+        ),
+        cur_raw AS (
+          SELECT {current_season_expr} AS season, h
+          FROM es LATERAL VIEW explode(cast(parse_json(es.history) AS ARRAY<VARIANT>)) AS h
+        ),
+        cur_players AS (   -- latest known name / position / code for each player this season
+          SELECT season, player_id, player_code, web_name, position
+          FROM (SELECT *, row_number() OVER (PARTITION BY season, player_id ORDER BY snapshot_ts DESC) AS rn
+                FROM {SILVER}.player_snapshots)
+          WHERE rn = 1
+        ),
+        cur AS (
+          SELECT r.season,
+                 try_variant_get(h, '$.round', 'int')         AS gameweek,
+                 try_variant_get(h, '$.element', 'int')       AS player_id,
+                 p.player_code, p.web_name, p.position,
+                 CASE WHEN try_variant_get(h, '$.was_home', 'boolean') THEN f.home_team_id ELSE f.away_team_id END AS team_id,
+                 try_variant_get(h, '$.opponent_team', 'int') AS opponent_team_id,
+                 try_variant_get(h, '$.fixture', 'int')       AS fixture_id,
+                 try_variant_get(h, '$.kickoff_time', 'timestamp') AS kickoff_time,
+                 try_variant_get(h, '$.was_home', 'boolean')  AS was_home,
+                 CASE WHEN try_variant_get(h, '$.was_home', 'boolean') THEN try_variant_get(h, '$.team_h_score', 'int')
+                      ELSE try_variant_get(h, '$.team_a_score', 'int') END AS team_score,
+                 CASE WHEN try_variant_get(h, '$.was_home', 'boolean') THEN try_variant_get(h, '$.team_a_score', 'int')
+                      ELSE try_variant_get(h, '$.team_h_score', 'int') END AS opponent_score,
+                 try_variant_get(h, '$.value', 'int') / 10.0  AS price,
+                 {_current_stats('h')},
+                 'fpl_api' AS source
+          FROM cur_raw r
+          LEFT JOIN cur_players p
+            ON p.season = r.season AND p.player_id = try_variant_get(h, '$.element', 'int')
+          LEFT JOIN {SILVER}.fixtures f
+            ON f.season = r.season AND f.fixture_id = try_variant_get(h, '$.fixture', 'int')
+        ),
+
+        -- ---------- past seasons: latest vaastav backfill of each season ----------
+        gw AS (
+          SELECT * FROM (SELECT *, max(_snapshot_ts) OVER (PARTITION BY season) AS latest FROM {BRONZE}.vaastav_merged_gw)
+          WHERE _snapshot_ts = latest
+        ),
+        vp AS (
+          SELECT * FROM (SELECT *, max(_snapshot_ts) OVER (PARTITION BY season) AS latest FROM {BRONZE}.vaastav_players)
+          WHERE _snapshot_ts = latest
+        ),
+        vt AS (
+          SELECT * FROM (SELECT *, max(_snapshot_ts) OVER (PARTITION BY season) AS latest FROM {BRONZE}.vaastav_teams)
+          WHERE _snapshot_ts = latest
+        ),
+        hist AS (
+          SELECT g.season,
+                 try_cast(g.GW AS INT)                   AS gameweek,
+                 try_cast(g.element AS INT)              AS player_id,
+                 try_cast(vp.code AS BIGINT)             AS player_code,
+                 vp.web_name,
+                 CASE g.position WHEN 'GK' THEN 'GKP' ELSE g.position END AS position,
+                 try_cast(vt.id AS INT)                  AS team_id,
+                 try_cast(g.opponent_team AS INT)        AS opponent_team_id,
+                 try_cast(g.fixture AS INT)              AS fixture_id,
+                 try_cast(g.kickoff_time AS TIMESTAMP)   AS kickoff_time,
+                 try_cast(g.was_home AS BOOLEAN)         AS was_home,
+                 CASE WHEN try_cast(g.was_home AS BOOLEAN) THEN try_cast(g.team_h_score AS INT)
+                      ELSE try_cast(g.team_a_score AS INT) END AS team_score,
+                 CASE WHEN try_cast(g.was_home AS BOOLEAN) THEN try_cast(g.team_a_score AS INT)
+                      ELSE try_cast(g.team_h_score AS INT) END AS opponent_score,
+                 try_cast(g.value AS INT) / 10.0         AS price,
+                 {_hist_stats('g')},
+                 'vaastav' AS source
+          FROM gw g
+          LEFT JOIN vp ON vp.season = g.season AND vp.id = g.element
+          LEFT JOIN vt ON vt.season = g.season AND vt.name = g.team
+          WHERE g.position IS DISTINCT FROM 'AM'                          -- 2024-25 Assistant Manager chip rows
+            AND g.season NOT IN (SELECT DISTINCT season FROM cur_raw)     -- current season comes from the API
+        )
+
+        -- vaastav's 2025-26 file contains a few exact duplicate rows: keep one per (season, player, fixture)
+        SELECT * FROM hist
+        QUALIFY row_number() OVER (PARTITION BY season, player_id, fixture_id ORDER BY minutes DESC NULLS LAST) = 1
+        UNION ALL
+        SELECT * FROM cur
+    """)

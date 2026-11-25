@@ -23,10 +23,21 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 300000          # wait 5 min before retrying
 
-        # Runs only after the fetch succeeds: loads the new files into bronze, then refreshes silver.
-        - task_key: transform
+        # Per-player match history (~700 requests). Fetches on the first run of each UTC day, skips otherwise.
+        - task_key: fetch_element_summaries
           depends_on:
             - task_key: fetch_fpl_api
+          notebook_task:
+            notebook_path: ../src/ingest/fetch_element_summaries.py
+            base_parameters:
+              catalog: ${var.catalog}
+          max_retries: 1
+          min_retry_interval_millis: 600000
+
+        # Runs only after both fetches succeed: loads the new files into bronze, then refreshes silver.
+        - task_key: transform
+          depends_on:
+            - task_key: fetch_element_summaries
           pipeline_task:
             pipeline_id: ${resources.pipelines.fpl_bronze.id}
             full_refresh: false

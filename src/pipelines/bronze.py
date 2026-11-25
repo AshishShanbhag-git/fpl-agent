@@ -21,12 +21,16 @@ LANDING = f"/Volumes/{CATALOG}/raw/landing"
 _TS_PATTERN = r"_(\d{8}T\d{6}Z)\.json$"
 
 
-def read_landing(endpoint: str) -> DataFrame:
-    """Incrementally read every JSON file under landing/<endpoint>/ with Auto Loader."""
+def read_landing(endpoint: str, json_lines: bool = False) -> DataFrame:
+    """Incrementally read every JSON file under landing/<endpoint>/ with Auto Loader.
+
+    json_lines=False: each file is one JSON document (API responses).
+    json_lines=True:  each line of a file is its own record (element_summary, vaastav backfill).
+    """
     return (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
-        .option("multiLine", "true")                       # each file is one pretty JSON document
+        .option("multiLine", str(not json_lines).lower())
         .option("cloudFiles.inferColumnTypes", "false")    # keep everything as strings in bronze
         .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
         .load(f"{LANDING}/{endpoint}/")
@@ -66,3 +70,47 @@ def bootstrap_static():
 @dlt.expect("fixture has an id", "id IS NOT NULL")
 def fixtures():
     return add_lineage(read_landing("fixtures"))
+
+
+@dlt.table(
+    name="element_summary",
+    comment="One row per player per daily element-summary snapshot: current-season match history (raw JSON text).",
+    table_properties={"quality": "bronze"},
+)
+@dlt.expect_or_fail("snapshot time parsed from file name", "_snapshot_ts IS NOT NULL")
+@dlt.expect("row has a player id", "player_id IS NOT NULL")
+def element_summary():
+    return add_lineage(read_landing("element_summary", json_lines=True))
+
+
+# --- Historical seasons (vaastav/Fantasy-Premier-League backfill). `season` comes from the folder name. ---
+
+@dlt.table(
+    name="vaastav_merged_gw",
+    comment="Past seasons: one row per player per fixture, from vaastav merged_gw.csv (all columns as strings).",
+    table_properties={"quality": "bronze"},
+)
+@dlt.expect_or_fail("snapshot time parsed from file name", "_snapshot_ts IS NOT NULL")
+@dlt.expect("row has season", "season IS NOT NULL")
+def vaastav_merged_gw():
+    return add_lineage(read_landing("vaastav_merged_gw", json_lines=True))
+
+
+@dlt.table(
+    name="vaastav_players",
+    comment="Past seasons: player id -> code / names / position, from vaastav players_raw.csv.",
+    table_properties={"quality": "bronze"},
+)
+@dlt.expect_or_fail("snapshot time parsed from file name", "_snapshot_ts IS NOT NULL")
+def vaastav_players():
+    return add_lineage(read_landing("vaastav_players", json_lines=True))
+
+
+@dlt.table(
+    name="vaastav_teams",
+    comment="Past seasons: team id -> name, from vaastav teams.csv.",
+    table_properties={"quality": "bronze"},
+)
+@dlt.expect_or_fail("snapshot time parsed from file name", "_snapshot_ts IS NOT NULL")
+def vaastav_teams():
+    return add_lineage(read_landing("vaastav_teams", json_lines=True))
