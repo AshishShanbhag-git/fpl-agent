@@ -23,4 +23,5 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               bundle_root: ${workspace.file_path}
+              experiment_id: ${resources.experiments.xpts_experiment.id}
           timeout_seconds: 5400

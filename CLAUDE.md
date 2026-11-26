@@ -19,6 +19,7 @@ databricks bundle run fpl_bronze                 # the "fpl-transform" pipeline 
 databricks bundle run fpl_backfill_history       # past seasons from vaastav (manual)
 databricks bundle run fpl_tips_backfill          # tip articles from sitemaps (manual)
 databricks bundle run fpl_xpts_eval              # score xPts baselines -> fpl.ml.xpts_eval (manual)
+databricks bundle run fpl_xpts_train             # train LightGBM, log to MLflow, register fpl.ml.xpts (manual)
 python -m unittest discover -s tests -v          # unit tests (pure Python, run locally)
 ```
 
@@ -78,7 +79,15 @@ Tip collection (Phase 1) keeps running on the 6-hourly schedule meanwhile, so ti
   that season (train-only model couldn't learn them; the final model includes 2025-26).
 - Ideas not done yet: separate minutes model (P(plays 60)) × points-given-minutes; availability adjustment from
   status/chance_of_playing for the current season.
-- Next: step 4/5 MLflow tracking + register `fpl.ml.xpts` in UC → step 6 score future rows into `gold.xpts` in the job.
+- Steps 4-5 (2026-11-26) done: `resources/ml.yml` defines MLflow experiment `/Users/<me>/fpl-xpts` and UC model
+  `fpl.ml.xpts` (prevent_destroy). `train_xpts.py` logs a parent run (params, 31 valid/test metrics, feature
+  importance, eval rows CSV) + one child run per grid setting; registers a pyfunc (`src/ml/xpts_model.py`: 4 boosters
+  stored as LightGBM text, routed by `position`; input = position + features, output column `xpts`).
+  Alias `champion` moves only if `valid_relevant_rmse` ≤ current champion's. Reload check: registered version must
+  reproduce notebook predictions (max diff < 1e-6). v1 = champion (valid_relevant_rmse 2.6716, diff 0).
+  mlflow-skinny 2.22.0 pinned in the notebook. gold.player_gw_features is a materialized view (no DESCRIBE HISTORY)
+  → a data fingerprint ("N rows to <season> GW<n>") is logged instead of a table version.
+- Next: step 6 score future rows with `models:/fpl.ml.xpts@champion` into `gold.xpts` as a task in `fpl-ingest`.
 
 ## Optimiser requirements (owner, 2026-11-26)
 The agent must give, each gameweek, **(1) transfers / chip advice starting from the owner's actual squad** and

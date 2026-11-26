@@ -1,0 +1,19 @@
+# MLflow pieces for the xPts model, defined as code.
+# * experiment: the "lab notebook" where every training run logs its settings, scores and files.
+# * registered model fpl.ml.xpts: the Unity Catalog entry that holds each trained version. The alias
+#   "champion" points at the version the scoring job should use.
+resources:
+  experiments:
+    xpts_experiment:
+      name: /Users/${workspace.current_user.userName}/fpl-xpts
+
+  registered_models:
+    xpts_model:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.ml.name}
+      name: xpts
+      comment: >-
+        Expected FPL points for a player in a gameweek. Input = gold.player_gw_features columns (incl. position);
+        output = xpts. Alias "champion" = the version used for scoring.
+      lifecycle:
+        prevent_destroy: true

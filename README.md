@@ -12,6 +12,8 @@ resources/                # What Databricks should create (YAML)
   catalog.yml             #   Unity Catalog schemas (raw/bronze/silver/gold/ml) + landing Volume
   ingest_job.yml          #   Scheduled job (every 6h): fetch FPL API (+ per-player history once a day) → transform
   backfill_job.yml        #   Manual job: load past seasons (vaastav) → transform
+  ml.yml                  #   MLflow experiment + Unity Catalog model fpl.ml.xpts
+  ml_jobs.yml             #   Manual ML jobs: fpl-xpts-eval, fpl-xpts-train
   bronze_pipeline.yml     #   Lakeflow Declarative Pipeline "fpl-transform" (bronze + silver)
 src/
   ingest/fetch_fpl.py     # Notebook: downloads FPL API JSON → /Volumes/fpl/raw/landing/... (timestamped)
@@ -23,7 +25,9 @@ src/
   ml/metrics.py           # Evaluation metrics (MAE, RMSE, correlations, top-k actual points), unit tested
   ml/evaluation.py        # Shared scoring: same rows, segments and metrics for every model
   ml/evaluate_baselines.py # Notebook: scores xPts baselines -> fpl.ml.xpts_eval  (job fpl-xpts-eval)
-  ml/train_xpts.py        # Notebook: LightGBM per position, tuned on 2025-26, tested on this season (job fpl-xpts-train)
+  ml/train_xpts.py        # Notebook: LightGBM per position, tuned on 2025-26, tested on this season (job fpl-xpts-train);
+                          #   logs to MLflow and registers fpl.ml.xpts (alias "champion")
+  ml/xpts_model.py        # The registered model: 4 position models behind one predict()
   tips/tiplib.py          # Tip-article fetcher logic (pure Python, unit tested)
   tips/fetch_tips.py      # Notebook: discover + fetch tip articles from approved sources → private Volume
 config/tip_sources.yml    # Approved tip sources (robots.txt + terms reviewed), with reasons for rejected ones
