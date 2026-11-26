@@ -1,0 +1,96 @@
+# FPL tip sources for the Tipster Accuracy feature.
+#
+# A source is fetched only if active: true AND robots_ok: true AND terms_ok: true AND paywalled: false.
+# Every source was approved by the project owner after a robots.txt + terms-of-use review (2026-11-26).
+# Re-check robots.txt with:  python -I scripts/check_robots.py
+#
+# discovery.method:
+#   rss        -> read the RSS feed; items have a real publish date (pubDate)
+#   sitemap    -> read sitemap(s) for backfill; <lastmod> is used only as a hint, the article's own date wins
+#   snapshot   -> fixed pages the site rewrites every gameweek. They have no trustworthy publish date, so
+#                 published_at = fetched_at, and they must be fetched before each deadline. No backfill possible.
+#
+# Compliance rules applied by the fetcher for every source:
+#   * User-Agent below, >= 5 s between requests to the same host, robots.txt re-checked every run
+#   * raw text is stored only in the private bronze Volume/table; silver/gold keep tip facts + URL only
+
+user_agent: "fpl-agent-tipster/0.1 (+https://github.com/AshishShanbhag-git/fpl-agent; personal non-commercial research)"
+min_delay_seconds: 5
+
+# Only articles whose title matches one of these (case-insensitive) are fetched from rss/sitemap sources.
+default_title_include: ["\\bgw ?\\d+\\b", "gameweek ?\\d+", "captain", "transfer", "differential", "tips", "picks", "wildcard", "free hit", "bench boost", "triple captain", "team reveal", "buy", "sell"]
+default_title_exclude: ["\\breview\\b", "team name", "results", "dream team"]
+
+sources:
+  - name: allaboutfpl
+    display_name: All About FPL
+    base_url: https://allaboutfpl.com
+    discovery:
+      method: rss
+      url: https://allaboutfpl.com/feed/
+    backfill:
+      method: sitemap
+      urls:
+        - https://allaboutfpl.com/post-sitemap.xml
+        - https://allaboutfpl.com/post-sitemap2.xml
+        - https://allaboutfpl.com/post-sitemap3.xml
+      url_pattern: "^https://allaboutfpl\\.com/\\d{4}/\\d{2}/"
+    robots_ok: true
+    terms_ok: true         # no terms page published; robots.txt allows all; no AI-crawler block
+    paywalled: false
+    active: true
+
+  - name: fplwire
+    display_name: FPL Wire
+    base_url: https://www.fplwire.com
+    discovery:
+      method: rss
+      url: https://www.fplwire.com/feed/
+    backfill:
+      method: sitemap
+      urls:
+        - https://www.fplwire.com/post-sitemap.xml
+    robots_ok: true
+    terms_ok: true         # terms forbid *bulk* scraping and republishing; we fetch a few articles/GW and store facts + URL
+    paywalled: false
+    active: true
+    notes: Model-driven site (publishes its own projections). Some feed items are evergreen tool pages; title filter applies.
+
+  - name: ffpundit
+    display_name: Fantasy Football Pundit
+    base_url: https://www.fantasyfootballpundit.com
+    discovery:
+      method: snapshot
+      urls:
+        - https://www.fantasyfootballpundit.com/fpl-gameweek-tips/
+        - https://www.fantasyfootballpundit.com/fpl-captain-picks-gameweek/
+        - https://www.fantasyfootballpundit.com/best-fpl-differentials/
+    backfill: null         # pages are overwritten weekly; history exists only from our first snapshot
+    robots_ok: true
+    terms_ok: true         # no terms page published; robots.txt allows these paths; no AI-crawler block
+    paywalled: false
+    active: true
+
+  # ---- Reviewed but NOT active -------------------------------------------------------------
+  - name: evening_standard
+    display_name: Evening Standard (FPL tips)
+    base_url: https://www.standard.co.uk
+    robots_ok: true
+    terms_ok: false        # unclear: site refused our research tool (possible AI block); terms not reviewed
+    paywalled: false
+    active: false
+
+  - name: goal
+    display_name: Goal.com (FPL tips)
+    base_url: https://www.goal.com
+    robots_ok: true
+    terms_ok: false        # unclear: terms page not located
+    paywalled: false
+    active: false
+
+  # Excluded after review (kept here so nobody re-adds them by accident):
+  #   fantasyfootballscout   terms 6.6 forbid automated/systematic extraction
+  #   fantasyfootballcommunity  redirects to fantasyfootballscout (same terms)
+  #   fantasyfootballfix     terms claim player/price data as IP, no reuse without permission
+  #   sportskeeda, skysports robots.txt blocks AI crawlers
+  #   planetfpl              TLS certificate failed verification
