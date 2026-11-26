@@ -20,6 +20,7 @@ databricks bundle run fpl_backfill_history       # past seasons from vaastav (ma
 databricks bundle run fpl_tips_backfill          # tip articles from sitemaps (manual)
 databricks bundle run fpl_xpts_eval              # score xPts baselines -> fpl.ml.xpts_eval (manual)
 databricks bundle run fpl_xpts_train             # train LightGBM, log to MLflow, register fpl.ml.xpts (manual)
+databricks bundle run fpl_optimise --params team_id=<id>   # transfers/chip/lineup for one team (manual)
 python -m unittest discover -s tests -v          # unit tests (pure Python, run locally)
 ```
 
@@ -45,6 +46,7 @@ python -m unittest discover -s tests -v          # unit tests (pure Python, run 
 
 | gold | `player_gw_features` | (season, player_id, gameweek); training rows 2020-21 → last finished GW + `is_future` rows for next 5 GWs; features as of `feature_as_of_gw` (< gameweek, enforced by expect_or_fail); targets `target_points`, `target_minutes` |
 | gold | `xpts`, `xpts_history` | Delta tables written by `score_xpts` (not the pipeline): (season, player_id, gameweek) xpts for next 5 GWs + web_name, position, team_id, n_fixtures, model_version, features_hash, scored_at; history = every scoring run appended |
+| gold | `recommendations` | one row per optimiser run (team_id, gameweek): transfers, chip, XI, captain, bench, xPts, plan_json, chip_evaluations_json. Written by `plan_gameweek.py` |
 | ml | `xpts_eval` | (model, season, split, subset, segment) metrics: mae, rmse, pearson, spearman, top1/top10 actual + oracle. Each model's job deletes its own rows then appends |
 
 Keys: player ids are reused across seasons → always join on `(season, player_id)`; `player_code` is stable.
@@ -107,6 +109,22 @@ chips left (two sets; first set expires at the GW19 deadline). Hits cost −4 pe
 plan is recommended; re-plan every week. Chips are evaluated by re-solving with each chip (WC/FH = squad unconstrained,
 BB = bench counts, TC = captain ×3) and recommended only if the gain beats a keep-it threshold.
 Squad data: public `entry/{team_id}/event/{gw}/picks/` + `entry/{team_id}/transfers/` (purchase prices → selling prices).
+
+## Optimiser progress
+- Built 2026-11-26: `src/optimiser/fpl_entry.py` (pure: selling prices, FT replay, chips per half, Free Hit revert),
+  `src/optimiser/solver.py` (PuLP 2.9.0 / CBC ILP; tests in `tests/test_optimiser.py`), notebook
+  `src/optimiser/plan_gameweek.py` = job `fpl-optimise` (manual; `team_id` is a run parameter, never commit it).
+- Solver: squad/start/captain/buy/sell binaries per GW, bank, `free` (FTs used) + `hits` + `ft` integers;
+  objective = Σ decay^i·(XI xPts + captain + 0.1·bench − 4·hits) + 1.5·FTs left at the end. Decay 0.9.
+  Pool pruned to owned + top/cheapest per position (~140 players): 21 solves (base + 4 chips × 5 GWs) ≈ 40 s.
+- Chips: re-solve with each chip in each horizon GW; play now if gain ≥ KEEP_VALUE (WC 12, FH 8, BB 10, TC 6)
+  × (1 − chips_left / weeks_left_in_half) and no later horizon GW is better. One chip max.
+- Availability: xPts × chance_of_playing (or status d=0.5, i/s=0) for GW1, half-way back in GW2, full from GW3;
+  `u`/`n` stay 0. Live bootstrap-static is used for prices/status.
+- FT rules assumed from 2025-26 (bank ≤ 5, WC/FH keep FTs, no +1 that week); `free_transfers` param overrides.
+  Picks are public only after a deadline → transfers already made for the coming GW are invisible.
+- First run 2026-11-26 on the owner's team (id passed at run time; not in repo): read 2 FTs, £0.9m, chips WC/FH/BB left
+  (TC used GW3); recommended Wildcard (+23.2 xPts over GW12-16 vs best no-chip plan; bar 7.5). ~70 s per run.
 
 ## Tipster Accuracy feature (spec pasted by owner on 2026-11-26)
 Phased; **stop after each phase and wait for go-ahead**. Copyright: raw text only in private bronze; silver/gold/app

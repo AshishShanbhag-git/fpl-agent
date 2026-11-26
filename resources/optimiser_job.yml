@@ -1,0 +1,24 @@
+# Manual job: recommend this gameweek's transfers, chip and lineup for one FPL team.
+#   databricks bundle run fpl_optimise --params team_id=<your FPL team id>
+# The team id is passed at run time so it never lands in the public repo.
+resources:
+  jobs:
+    fpl_optimise:
+      name: fpl-optimise
+      max_concurrent_runs: 1
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: bundle_root
+          default: ${workspace.file_path}
+        - name: team_id
+          default: ""
+        - name: free_transfers      # blank = work out from the team's history
+          default: ""
+        - name: horizon
+          default: "5"
+      tasks:
+        - task_key: plan_gameweek
+          notebook_task:
+            notebook_path: ../src/optimiser/plan_gameweek.py
+          timeout_seconds: 1800

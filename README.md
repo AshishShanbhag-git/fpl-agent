@@ -14,6 +14,7 @@ resources/                # What Databricks should create (YAML)
   backfill_job.yml        #   Manual job: load past seasons (vaastav) → transform
   ml.yml                  #   MLflow experiment + Unity Catalog model fpl.ml.xpts
   ml_jobs.yml             #   Manual ML jobs: fpl-xpts-eval, fpl-xpts-train
+  optimiser_job.yml       #   Manual job fpl-optimise: transfers, chip and lineup for one FPL team
   bronze_pipeline.yml     #   Lakeflow Declarative Pipeline "fpl-transform" (bronze + silver)
 src/
   ingest/fetch_fpl.py     # Notebook: downloads FPL API JSON → /Volumes/fpl/raw/landing/... (timestamped)
@@ -29,6 +30,9 @@ src/
                           #   logs to MLflow and registers fpl.ml.xpts (alias "champion")
   ml/xpts_model.py        # The registered model: 4 position models behind one predict()
   ml/score_xpts.py        # Notebook (in fpl-ingest): champion model -> fpl.gold.xpts for the next 5 GWs; skips if unchanged
+  optimiser/fpl_entry.py  # Team state from the public FPL API: selling prices, free transfers, chips left (unit tested)
+  optimiser/solver.py     # Integer programme (PuLP): multi-GW transfers + chips + XI/captain/bench (unit tested)
+  optimiser/plan_gameweek.py # Notebook (job fpl-optimise): runs the solver for a team -> fpl.gold.recommendations
   tips/tiplib.py          # Tip-article fetcher logic (pure Python, unit tested)
   tips/fetch_tips.py      # Notebook: discover + fetch tip articles from approved sources → private Volume
 config/tip_sources.yml    # Approved tip sources (robots.txt + terms reviewed), with reasons for rejected ones
@@ -78,6 +82,7 @@ FROM fpl.silver.news_snapshots WHERE web_name = 'Saka' ORDER BY observed_at;
 databricks bundle validate      # check the config for mistakes (changes nothing)
 databricks bundle deploy        # create/update the schemas, volume and job in the workspace
 databricks bundle run fpl_ingest  # run the ingestion job once, right now
+databricks bundle run fpl_optimise --params team_id=1234567   # this week's advice for your team
 ```
 
 ## Data notes
