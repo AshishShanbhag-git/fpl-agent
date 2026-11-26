@@ -43,3 +43,14 @@ resources:
       comment: Timestamped JSON files downloaded from the FPL API
       lifecycle:
         prevent_destroy: true
+
+    # PRIVATE: full text of third-party tip articles, kept only as LLM-extraction input.
+    # Never grant access to others; silver/gold store structured tip facts + URL only.
+    tips_landing:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.raw.name}
+      name: tips_landing
+      volume_type: MANAGED
+      comment: PRIVATE - fetched FPL tip articles (raw text) from approved sources; LLM-extraction input only
+      lifecycle:
+        prevent_destroy: true

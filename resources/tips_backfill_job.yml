@@ -1,0 +1,27 @@
+# Manual job: backfill tip articles for earlier gameweeks of this season from source sitemaps.
+# Run with:  databricks bundle run fpl_tips_backfill
+# Safe to re-run: URLs already in bronze are skipped. Capped by max_articles per run (5 s between requests,
+# so 250 articles ≈ 21+ minutes).
+resources:
+  jobs:
+    fpl_tips_backfill:
+      name: fpl-tips-backfill
+      description: Backfill FPL tip articles (sitemaps since since_date), then refresh bronze/silver
+      max_concurrent_runs: 1
+      timeout_seconds: 5400
+      tasks:
+        - task_key: fetch_tips_backfill
+          notebook_task:
+            notebook_path: ../src/tips/fetch_tips.py
+            base_parameters:
+              catalog: ${var.catalog}
+              bundle_root: ${workspace.file_path}
+              mode: backfill
+              since_date: "2026-07-01"
+              max_articles: "250"
+        - task_key: transform
+          depends_on:
+            - task_key: fetch_tips_backfill
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.fpl_bronze.id}
+            full_refresh: false

@@ -34,10 +34,24 @@ resources:
           max_retries: 1
           min_retry_interval_millis: 600000
 
-        # Runs only after both fetches succeed: loads the new files into bronze, then refreshes silver.
+        # New FPL tip articles from approved sources (config/tip_sources.yml). Independent of the FPL fetches.
+        - task_key: fetch_tips
+          notebook_task:
+            notebook_path: ../src/tips/fetch_tips.py
+            base_parameters:
+              catalog: ${var.catalog}
+              bundle_root: ${workspace.file_path}
+              mode: incremental
+          max_retries: 1
+          min_retry_interval_millis: 600000
+
+        # Loads all new files into bronze, then refreshes silver. ALL_DONE: a failed tips fetch
+        # must not stop the FPL data from being processed.
         - task_key: transform
+          run_if: ALL_DONE
           depends_on:
             - task_key: fetch_element_summaries
+            - task_key: fetch_tips
           pipeline_task:
             pipeline_id: ${resources.pipelines.fpl_bronze.id}
             full_refresh: false

@@ -19,7 +19,16 @@ src/
   ingest/backfill_vaastav.py         # Notebook: past seasons from vaastav/Fantasy-Premier-League (CSV → JSON lines)
   pipelines/bronze.py     # Auto Loader: new landing files → fpl.bronze.bootstrap_static / fpl.bronze.fixtures
   pipelines/silver.py     # Parse + type bronze JSON → fpl.silver.* (players, teams, fixtures, news history, ...)
+  tips/tiplib.py          # Tip-article fetcher logic (pure Python, unit tested)
+  tips/fetch_tips.py      # Notebook: discover + fetch tip articles from approved sources → private Volume
+config/tip_sources.yml    # Approved tip sources (robots.txt + terms reviewed), with reasons for rejected ones
+scripts/check_robots.py   # robots.txt / AI-crawler-block checker for candidate sources
+tests/                    # Unit tests:  python -m unittest discover -s tests -v
 ```
+
+**Tip articles & copyright:** full article text is stored only in the private `fpl.raw.tips_landing` Volume and
+`fpl.bronze.tip_articles_raw`, as input for LLM extraction. Downstream tables and the app store only structured
+tip facts plus a link to the original article; article text is never displayed or republished.
 
 ## Data flow so far
 

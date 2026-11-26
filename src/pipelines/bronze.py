@@ -21,8 +21,8 @@ LANDING = f"/Volumes/{CATALOG}/raw/landing"
 _TS_PATTERN = r"_(\d{8}T\d{6}Z)\.json$"
 
 
-def read_landing(endpoint: str, json_lines: bool = False) -> DataFrame:
-    """Incrementally read every JSON file under landing/<endpoint>/ with Auto Loader.
+def read_landing(endpoint: str, json_lines: bool = False, root: str | None = None) -> DataFrame:
+    """Incrementally read every JSON file under <root>/<endpoint>/ with Auto Loader (root defaults to landing).
 
     json_lines=False: each file is one JSON document (API responses).
     json_lines=True:  each line of a file is its own record (element_summary, vaastav backfill).
@@ -33,7 +33,7 @@ def read_landing(endpoint: str, json_lines: bool = False) -> DataFrame:
         .option("multiLine", str(not json_lines).lower())
         .option("cloudFiles.inferColumnTypes", "false")    # keep everything as strings in bronze
         .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
-        .load(f"{LANDING}/{endpoint}/")
+        .load(f"{root or LANDING}/{endpoint}/" if endpoint else f"{root or LANDING}/")
     )
 
 
@@ -114,3 +114,21 @@ def vaastav_players():
 @dlt.expect_or_fail("snapshot time parsed from file name", "_snapshot_ts IS NOT NULL")
 def vaastav_teams():
     return add_lineage(read_landing("vaastav_teams", json_lines=True))
+
+
+# --- Tip articles (Tipster Accuracy). PRIVATE: contains raw article text, used only for LLM extraction. ---
+# Silver/gold must never copy the `text` column: they keep structured tip facts + article URL only.
+
+@dlt.table(
+    name="tip_articles_raw",
+    comment=(
+        "PRIVATE - raw FPL tip articles (full extracted text) from approved sources in config/tip_sources.yml. "
+        "One row per fetched article version. Used only as LLM input; never display or republish `text`."
+    ),
+    table_properties={"quality": "bronze", "contains_copyrighted_text": "true"},
+)
+@dlt.expect_or_fail("snapshot time parsed from file name", "_snapshot_ts IS NOT NULL")
+@dlt.expect("has url and text", "url IS NOT NULL AND text IS NOT NULL")
+@dlt.expect("has publish time", "published_at IS NOT NULL")
+def tip_articles_raw():
+    return add_lineage(read_landing("", root=f"/Volumes/{CATALOG}/raw/tips_landing"))
