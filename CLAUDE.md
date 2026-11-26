@@ -43,6 +43,10 @@ python -m unittest discover -s tests -v          # unit tests (pure Python, run 
 Keys: player ids are reused across seasons → always join on `(season, player_id)`; `player_code` is stable.
 Season label from a timestamp: Jul–Jun, e.g. `2026-27`.
 
+## Roadmap decision (2026-11-26)
+Build the **xPts model first**, then resume Tipster Phases 2–4 as an enhancement to it (tip consensus as a model feature).
+Tip collection (Phase 1) keeps running on the 6-hourly schedule meanwhile, so tip history keeps accumulating.
+
 ## Tipster Accuracy feature (spec pasted by owner on 2026-11-26)
 Phased; **stop after each phase and wait for go-ahead**. Copyright: raw text only in private bronze; silver/gold/app
 store tip facts + URL only. No look-ahead: a tip counts only if `published_at < deadline` of its gameweek.
