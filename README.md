@@ -21,7 +21,9 @@ src/
   pipelines/silver.py     # Parse + type bronze JSON → fpl.silver.* (players, teams, fixtures, news history, ...)
   pipelines/gold.py       # xPts features: fpl.gold.player_gw_features (no look-ahead, enforced)
   ml/metrics.py           # Evaluation metrics (MAE, RMSE, correlations, top-k actual points), unit tested
+  ml/evaluation.py        # Shared scoring: same rows, segments and metrics for every model
   ml/evaluate_baselines.py # Notebook: scores xPts baselines -> fpl.ml.xpts_eval  (job fpl-xpts-eval)
+  ml/train_xpts.py        # Notebook: LightGBM per position, tuned on 2025-26, tested on this season (job fpl-xpts-train)
   tips/tiplib.py          # Tip-article fetcher logic (pure Python, unit tested)
   tips/fetch_tips.py      # Notebook: discover + fetch tip articles from approved sources → private Volume
 config/tip_sources.yml    # Approved tip sources (robots.txt + terms reviewed), with reasons for rejected ones

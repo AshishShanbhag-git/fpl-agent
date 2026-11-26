@@ -37,7 +37,7 @@ dbutils.widgets.text("bundle_root", "")
 CATALOG = dbutils.widgets.get("catalog")
 ROOT = Path(dbutils.widgets.get("bundle_root") or Path.cwd().parents[1])
 sys.path.insert(0, str(ROOT / "src" / "ml"))
-import metrics as M  # noqa: E402
+import evaluation as E  # noqa: E402
 
 EVAL_TABLE = f"{CATALOG}.ml.xpts_eval"
 RUN_AT = datetime.now(timezone.utc)
@@ -76,7 +76,7 @@ num = ["points_avg3", "points_avg5", "minutes_avg5", "played60_rate5", "gws_seas
        "n_fixtures", "target_points"]
 df[num] = df[num].astype("float64")
 current_season = df["season"].max()
-df["split"] = df["season"].map(lambda s: "test" if s == current_season else "valid" if s == "2025-26" else "train")
+df["split"] = df["season"].map(lambda s: E.split_of(s, current_season))
 print(f"{len(df):,} training rows; current season {current_season}; "
       f"rows with FPL xP: {df['fpl_xp'].notna().sum():,}")
 print(df[df["fpl_xp"].notna()].groupby(["season", "gameweek"]).size())
@@ -97,62 +97,17 @@ BASELINES = {
     "fpl_xp": df["fpl_xp"],                                 # NaN where FPL xP is missing
 }
 
-SEGMENTS = {
-    "all": pd.Series(True, index=df.index),
-    "relevant": df["minutes_avg5"].fillna(0) > 0,
-    "regular": df["played60_rate5"].fillna(0) >= 0.6,
-}
 SUBSETS = {"all_gws": pd.Series(True, index=df.index), "fpl_xp_rows": df["fpl_xp"].notna()}
 
 # COMMAND ----------
 
-# MAGIC %md ## Score every (model, season, subset, segment)
+# MAGIC %md ## Score every (model, season, subset, segment) and save
 
 # COMMAND ----------
 
-rows = []
-for model, pred in BASELINES.items():
-    for (season, split), g in df.groupby(["season", "split"]):
-        for subset, sub_mask in SUBSETS.items():
-            for segment, seg_mask in SEGMENTS.items():
-                mask = sub_mask.loc[g.index] & seg_mask.loc[g.index] & pred.loc[g.index].notna()
-                sel = g[mask]
-                if sel.empty:
-                    continue
-                if model == "fpl_xp" and subset == "all_gws":
-                    continue                                 # xP is only defined on fpl_xp_rows
-                p, a = pred.loc[sel.index].tolist(), sel["target_points"].tolist()
-                r = {"model": model, "season": season, "split": split, "subset": subset, "segment": segment,
-                     **M.summarise(p, a)}
-                # Ranking among all players in each gameweek (the optimiser's real question).
-                gw = sel["gameweek"].tolist()
-                r["top1_actual"] = M.top_k_actual(gw, p, a, 1)
-                r["top10_actual"] = M.top_k_actual(gw, p, a, 10)
-                r["top1_oracle"] = M.top_k_actual(gw, a, a, 1)   # best possible, for scale
-                r["top10_oracle"] = M.top_k_actual(gw, a, a, 10)
-                rows.append(r)
-
-res = pd.DataFrame(rows)
-res.insert(0, "run_at", RUN_AT)
+res = E.score(df, BASELINES, SUBSETS, only_subset={"fpl_xp": "fpl_xp_rows"})   # xP only exists on its rows
 print(f"{len(res)} result rows")
-
-# COMMAND ----------
-
-# MAGIC %md ## Save (replace earlier baseline rows, keep other models' rows)
-
-# COMMAND ----------
-
-spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {EVAL_TABLE} (
-  run_at TIMESTAMP, model STRING, season STRING, split STRING, subset STRING, segment STRING,
-  n BIGINT, mae DOUBLE, rmse DOUBLE, pearson DOUBLE, spearman DOUBLE, mean_pred DOUBLE, mean_actual DOUBLE,
-  top1_actual DOUBLE, top10_actual DOUBLE, top1_oracle DOUBLE, top10_oracle DOUBLE
-) COMMENT 'xPts model evaluation: one row per model x season x subset x segment. Lower MAE/RMSE is better; '
-          'higher correlation and top-k actual points is better. Written by src/ml/evaluate_baselines.py and step 3.'
-""")
-models = ", ".join(f"'{m}'" for m in BASELINES)
-spark.sql(f"DELETE FROM {EVAL_TABLE} WHERE model IN ({models})")
-spark.createDataFrame(res).write.mode("append").saveAsTable(EVAL_TABLE)
+E.save(spark, EVAL_TABLE, res, RUN_AT)
 
 # COMMAND ----------
 

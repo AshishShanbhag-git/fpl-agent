@@ -67,7 +67,18 @@ Tip collection (Phase 1) keeps running on the 6-hourly schedule meanwhile, so ti
   a ~11-pt captain every week). Never use it as a feature or baseline. FPL `ep_next` baseline comes only from our
   own pre-deadline snapshots (from GW12 2026-27 on); `fpl_xp` rows appear in xpts_eval once GW12 finishes.
 - Ranking metrics for constant predictions (`zero`) are tie-break noise; ignore them.
-- Next: step 3 LightGBM per position (train → tune on valid → report test once) → MLflow → `fpl.ml.xpts` → `gold.xpts`.
+- Step 3 (2026-11-26) done: `src/ml/train_xpts.py` (job `fpl-xpts-train`, lightgbm 4.5.0), model `lgbm_pos` in
+  xpts_eval. Shared scoring in `src/ml/evaluation.py` (both notebooks use it). Protocol: tune 6-setting grid per
+  position on valid by **RMSE** (xPts = mean, so RMSE not MAE), early stopping; retrain on train+valid with 1.1×
+  trees; predict test once. Train-season rows in xpts_eval are in-sample (ignore).
+  Relevant players: valid 2025-26 MAE 1.78 / RMSE 2.67 / Spearman 0.53 / captain 5.16 / top-10 5.01 (baseline
+  1.98 / 2.93 / 0.44 / 4.59 / 4.18); test 2026-27 MAE 1.77 / RMSE 2.61 / Spearman 0.55 / captain 7.0 / top-10 5.07.
+  Calibrated (mean pred ≈ mean actual). Top features: last_minutes, minutes_avg3 (playing time ≈ 55-70% of gain),
+  then selected, price, n_fixtures, points_avg3. Valid 2025-26 under-predicts relevant by ~0.15: DC points were new
+  that season (train-only model couldn't learn them; the final model includes 2025-26).
+- Ideas not done yet: separate minutes model (P(plays 60)) × points-given-minutes; availability adjustment from
+  status/chance_of_playing for the current season.
+- Next: step 4/5 MLflow tracking + register `fpl.ml.xpts` in UC → step 6 score future rows into `gold.xpts` in the job.
 
 ## Optimiser requirements (owner, 2026-11-26)
 The agent must give, each gameweek, **(1) transfers / chip advice starting from the owner's actual squad** and
