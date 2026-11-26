@@ -28,6 +28,7 @@ src/
   ml/train_xpts.py        # Notebook: LightGBM per position, tuned on 2025-26, tested on this season (job fpl-xpts-train);
                           #   logs to MLflow and registers fpl.ml.xpts (alias "champion")
   ml/xpts_model.py        # The registered model: 4 position models behind one predict()
+  ml/score_xpts.py        # Notebook (in fpl-ingest): champion model -> fpl.gold.xpts for the next 5 GWs; skips if unchanged
   tips/tiplib.py          # Tip-article fetcher logic (pure Python, unit tested)
   tips/fetch_tips.py      # Notebook: discover + fetch tip articles from approved sources → private Volume
 config/tip_sources.yml    # Approved tip sources (robots.txt + terms reviewed), with reasons for rejected ones

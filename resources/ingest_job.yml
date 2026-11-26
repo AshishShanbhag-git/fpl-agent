@@ -1,4 +1,5 @@
-# Scheduled job: every 6 hours, snapshot the FPL API into the landing Volume, then refresh bronze + silver.
+# Scheduled job: every 6 hours, snapshot the FPL API into the landing Volume, refresh bronze + silver + gold,
+# then score xPts (skipped when nothing changed).
 # No cluster is configured, so it runs on serverless compute (the only option on Free Edition).
 resources:
   jobs:
@@ -55,3 +56,16 @@ resources:
           pipeline_task:
             pipeline_id: ${resources.pipelines.fpl_bronze.id}
             full_refresh: false
+
+        # xPts for the next 5 gameweeks -> gold.xpts. Exits in seconds when its inputs haven't changed
+        # (most runs: the features only move when a gameweek finishes).
+        - task_key: score_xpts
+          depends_on:
+            - task_key: transform
+          notebook_task:
+            notebook_path: ../src/ml/score_xpts.py
+            base_parameters:
+              catalog: ${var.catalog}
+              force: "false"
+          max_retries: 1
+          min_retry_interval_millis: 300000

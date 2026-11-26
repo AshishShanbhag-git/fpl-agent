@@ -39,7 +39,8 @@ from pathlib import Path
 import lightgbm as lgb
 import mlflow
 import pandas as pd
-from mlflow.models import infer_signature
+from mlflow.models import ModelSignature
+from mlflow.types import ColSpec, Schema
 from mlflow.tracking import MlflowClient
 
 dbutils.widgets.text("catalog", "fpl")
@@ -167,12 +168,18 @@ mlflow.log_text(res.to_csv(index=False), "xpts_eval_rows.csv")
 # COMMAND ----------
 
 model = XptsModel(model_strings, FEATURES)
+# Explicit signature: every feature is an optional double (blank gameweeks / old seasons have missing values),
+# so scoring never fails on a NULL or an int column. Output: one double column "xpts".
+SIGNATURE = ModelSignature(
+    inputs=Schema([ColSpec("string", "position")] + [ColSpec("double", c, required=False) for c in FEATURES]),
+    outputs=Schema([ColSpec("double", "xpts")]),
+)
 example = df[["position"] + FEATURES].head(20)
 model_info = mlflow.pyfunc.log_model(
     artifact_path="model",
     python_model=model,
     code_paths=[str(ROOT / "src" / "ml" / "xpts_model.py")],
-    signature=infer_signature(example, model.predict(None, example)),
+    signature=SIGNATURE,
     input_example=example.head(5),
     pip_requirements=["lightgbm==4.5.0", "pandas", f"mlflow-skinny=={mlflow.__version__}"],
     registered_model_name=REGISTERED_MODEL,

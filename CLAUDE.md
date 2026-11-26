@@ -25,7 +25,8 @@ python -m unittest discover -s tests -v          # unit tests (pure Python, run 
 
 ## Jobs & pipeline
 - `fpl-ingest` (scheduled): `fetch_fpl_api` → `fetch_element_summaries` (once/UTC day); `fetch_tips` (independent);
-  → `transform` (run_if ALL_DONE) = pipeline `fpl-transform` (bronze + silver, serverless, triggered).
+  → `transform` (run_if ALL_DONE) = pipeline `fpl-transform` (bronze + silver + gold, serverless, triggered)
+  → `score_xpts` (skips when inputs unchanged; `force=true` to rescore).
 - `fpl-backfill-history`, `fpl-tips-backfill`: manual, each ends with the same `transform` pipeline task.
 - Only one pipeline update can run at a time: don't trigger jobs concurrently.
 
@@ -43,6 +44,7 @@ python -m unittest discover -s tests -v          # unit tests (pure Python, run 
 | silver | `player_gw_history` | (season, player_id, fixture_id); 2020-21 → now; price, minutes, points, xG, transfers, selected |
 
 | gold | `player_gw_features` | (season, player_id, gameweek); training rows 2020-21 → last finished GW + `is_future` rows for next 5 GWs; features as of `feature_as_of_gw` (< gameweek, enforced by expect_or_fail); targets `target_points`, `target_minutes` |
+| gold | `xpts`, `xpts_history` | Delta tables written by `score_xpts` (not the pipeline): (season, player_id, gameweek) xpts for next 5 GWs + web_name, position, team_id, n_fixtures, model_version, features_hash, scored_at; history = every scoring run appended |
 | ml | `xpts_eval` | (model, season, split, subset, segment) metrics: mae, rmse, pearson, spearman, top1/top10 actual + oracle. Each model's job deletes its own rows then appends |
 
 Keys: player ids are reused across seasons → always join on `(season, player_id)`; `player_code` is stable.
@@ -87,7 +89,15 @@ Tip collection (Phase 1) keeps running on the 6-hourly schedule meanwhile, so ti
   reproduce notebook predictions (max diff < 1e-6). v1 = champion (valid_relevant_rmse 2.6716, diff 0).
   mlflow-skinny 2.22.0 pinned in the notebook. gold.player_gw_features is a materialized view (no DESCRIBE HISTORY)
   → a data fingerprint ("N rows to <season> GW<n>") is logged instead of a table version.
-- Next: step 6 score future rows with `models:/fpl.ml.xpts@champion` into `gold.xpts` as a task in `fpl-ingest`.
+- Step 6 (2026-11-26) done: `src/ml/score_xpts.py` = task `score_xpts` in `fpl-ingest` (after transform).
+  Fingerprint (count + decimal sum of xxhash64 of future feature rows) + champion version are checked first with
+  Spark + Databricks SDK only; unchanged → exits before `%pip` (most runs). Writes `gold.xpts` (overwrite) and
+  appends `gold.xpts_history`. Model signature is explicit: position string + every feature optional double
+  (v1 had an inferred strict signature that rejected int columns → v2 retrained, now champion, same scores).
+  Scoring also casts inputs to double. First run: 3,370 rows GW12-16; GW12 top: Virgil, Gabriel, Haaland ≈ 5.3.
+- Compute (system.billing.usage): fpl-ingest notebooks ≈ 0.08-0.09 DBU/day, pipeline ≈ 0.5 DBU/day
+  (1.4 on build day); ad-hoc warehouse SQL was the biggest consumer (3.4 DBU on 2026-11-25).
+- xPts model is complete. Next: the optimiser (needs owner's FPL team ID), then agent/app, then Tipster Phases 2-4.
 
 ## Optimiser requirements (owner, 2026-11-26)
 The agent must give, each gameweek, **(1) transfers / chip advice starting from the owner's actual squad** and
