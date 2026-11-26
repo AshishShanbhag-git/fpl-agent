@@ -20,6 +20,8 @@ src/
   pipelines/bronze.py     # Auto Loader: new landing files → fpl.bronze.bootstrap_static / fpl.bronze.fixtures
   pipelines/silver.py     # Parse + type bronze JSON → fpl.silver.* (players, teams, fixtures, news history, ...)
   pipelines/gold.py       # xPts features: fpl.gold.player_gw_features (no look-ahead, enforced)
+  ml/metrics.py           # Evaluation metrics (MAE, RMSE, correlations, top-k actual points), unit tested
+  ml/evaluate_baselines.py # Notebook: scores xPts baselines -> fpl.ml.xpts_eval  (job fpl-xpts-eval)
   tips/tiplib.py          # Tip-article fetcher logic (pure Python, unit tested)
   tips/fetch_tips.py      # Notebook: discover + fetch tip articles from approved sources → private Volume
 config/tip_sources.yml    # Approved tip sources (robots.txt + terms reviewed), with reasons for rejected ones
@@ -75,6 +77,8 @@ databricks bundle run fpl_ingest  # run the ingestion job once, right now
 - `player_gw_history`: past seasons come from vaastav, the current season from FPL's `element-summary`.
   xG is NULL before 2022-23 and defensive-contribution stats are NULL before 2025-26 (not tracked then).
   2024-25 Assistant Manager rows are excluded, and a few exact duplicate vaastav rows are dropped.
+- vaastav's `xP` column is **not used**: it is recorded after each gameweek (it already reflects that week's
+  points), so using it as a baseline or feature would leak the answer.
 
 ## One-off setup already done
 - Historical backfill: `databricks bundle run fpl_backfill_history` (re-runnable; latest load per season wins).

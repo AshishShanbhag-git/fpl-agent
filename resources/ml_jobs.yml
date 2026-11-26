@@ -1,0 +1,14 @@
+# Manual ML jobs (not scheduled). Run with:  databricks bundle run fpl_xpts_eval
+resources:
+  jobs:
+    fpl_xpts_eval:
+      name: fpl-xpts-eval
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: evaluate_baselines
+          notebook_task:
+            notebook_path: ../src/ml/evaluate_baselines.py
+            base_parameters:
+              catalog: ${var.catalog}
+              bundle_root: ${workspace.file_path}
+          timeout_seconds: 3600

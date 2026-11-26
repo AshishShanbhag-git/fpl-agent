@@ -1,0 +1,11 @@
+{
+  "statement_id": "01f1e9a4-3e35-1fd0-abb4-16b7018b1c9e",
+  "status": {
+    "state": "FAILED",
+    "error": {
+      "error_code": "BAD_REQUEST",
+      "message": "[DATATYPE_MISMATCH.BINARY_OP_DIFF_TYPES] Cannot resolve \"(c AND mx)\" due to data type mismatch: the left and right operands of the binary operator have incompatible types (\"BIGINT\" and \"DOUBLE\"). SQLSTATE: 42K09; line 4 pos 13"
+    },
+    "sql_state": "42K09"
+  }
+}

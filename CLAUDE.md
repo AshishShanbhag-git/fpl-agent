@@ -18,6 +18,7 @@ databricks bundle run fpl_ingest                 # scheduled every 6h (00:15/06:
 databricks bundle run fpl_bronze                 # the "fpl-transform" pipeline only (resource key kept as fpl_bronze)
 databricks bundle run fpl_backfill_history       # past seasons from vaastav (manual)
 databricks bundle run fpl_tips_backfill          # tip articles from sitemaps (manual)
+databricks bundle run fpl_xpts_eval              # score xPts baselines -> fpl.ml.xpts_eval (manual)
 python -m unittest discover -s tests -v          # unit tests (pure Python, run locally)
 ```
 
@@ -41,6 +42,7 @@ python -m unittest discover -s tests -v          # unit tests (pure Python, run 
 | silver | `player_gw_history` | (season, player_id, fixture_id); 2020-21 → now; price, minutes, points, xG, transfers, selected |
 
 | gold | `player_gw_features` | (season, player_id, gameweek); training rows 2020-21 → last finished GW + `is_future` rows for next 5 GWs; features as of `feature_as_of_gw` (< gameweek, enforced by expect_or_fail); targets `target_points`, `target_minutes` |
+| ml | `xpts_eval` | (model, season, split, subset, segment) metrics: mae, rmse, pearson, spearman, top1/top10 actual + oracle. Each model's job deletes its own rows then appends |
 
 Keys: player ids are reused across seasons → always join on `(season, player_id)`; `player_code` is stable.
 Season label from a timestamp: Jul–Jun, e.g. `2026-27`.
@@ -55,7 +57,17 @@ Tip collection (Phase 1) keeps running on the 6-hourly schedule meanwhile, so ti
   because most rows are non-playing squad players. **Step 2 must evaluate on relevant players too** (e.g. minutes_avg5 > 0 / starters),
   not only all rows.
 - Not in features yet: availability (status / chance_of_playing) exists only from 2026-11-25 → apply as a current-season adjustment.
-- Next: step 2 baselines (weighted form, FPL `ep_next` from player_snapshots) → step 3 LightGBM per position → MLflow → `fpl.ml.xpts` → `gold.xpts`.
+- Step 2 (2026-11-26) done: `src/ml/evaluate_baselines.py` (job `fpl-xpts-eval`) + `src/ml/metrics.py` (tested).
+  Splits: train 2020-21..2024-25, valid 2025-26, test = current season. Segments (pre-GW info only): all /
+  relevant (minutes_avg5 > 0) / regular (played60_rate5 >= 0.6). **Best baseline = weighted_form**
+  (0.6·avg3 + 0.4·avg5, blended with prev-season pts/GW for the first 5 GWs, × n_fixtures).
+  Bars for step 3 (relevant, valid 2025-26): MAE 1.976, RMSE 2.93, Spearman 0.44, top-10 actual 4.18 (oracle 12.9),
+  captain (top-1) 4.59. Test 2026-27 relevant: MAE 1.91, Spearman 0.44.
+- **vaastav `xP` is look-ahead** (recorded after the GW: corr with same-GW points 0.6 vs 0.2 with next GW; picks
+  a ~11-pt captain every week). Never use it as a feature or baseline. FPL `ep_next` baseline comes only from our
+  own pre-deadline snapshots (from GW12 2026-27 on); `fpl_xp` rows appear in xpts_eval once GW12 finishes.
+- Ranking metrics for constant predictions (`zero`) are tie-break noise; ignore them.
+- Next: step 3 LightGBM per position (train → tune on valid → report test once) → MLflow → `fpl.ml.xpts` → `gold.xpts`.
 
 ## Optimiser requirements (owner, 2026-11-26)
 The agent must give, each gameweek, **(1) transfers / chip advice starting from the owner's actual squad** and
