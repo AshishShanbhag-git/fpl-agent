@@ -20,5 +20,7 @@ resources:
             path: ../src/pipelines/bronze.py
         - file:
             path: ../src/pipelines/silver.py
+        - file:
+            path: ../src/pipelines/gold.py
       lifecycle:
         prevent_destroy: true

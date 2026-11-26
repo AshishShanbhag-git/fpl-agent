@@ -40,12 +40,22 @@ python -m unittest discover -s tests -v          # unit tests (pure Python, run 
 | silver | `players`, `teams`, `gameweeks`, `fixtures` | current state (latest snapshot) |
 | silver | `player_gw_history` | (season, player_id, fixture_id); 2020-21 → now; price, minutes, points, xG, transfers, selected |
 
+| gold | `player_gw_features` | (season, player_id, gameweek); training rows 2020-21 → last finished GW + `is_future` rows for next 5 GWs; features as of `feature_as_of_gw` (< gameweek, enforced by expect_or_fail); targets `target_points`, `target_minutes` |
+
 Keys: player ids are reused across seasons → always join on `(season, player_id)`; `player_code` is stable.
 Season label from a timestamp: Jul–Jun, e.g. `2026-27`.
 
 ## Roadmap decision (2026-11-26)
 Build the **xPts model first**, then resume Tipster Phases 2–4 as an enhancement to it (tip consensus as a model feature).
 Tip collection (Phase 1) keeps running on the 6-hourly schedule meanwhile, so tip history keeps accumulating.
+
+## xPts model progress
+- Step 1 (2026-11-26) done: `gold.player_gw_features` in `src/pipelines/gold.py` (same pipeline). ~167k training rows, 3,370 prediction rows.
+  Simple baselines on training rows: MAE ≈ 1.03–1.28 for "points_avg5", corr ≈ 0.46–0.50; predicting 0 gives MAE ≈ 1.10–1.41
+  because most rows are non-playing squad players. **Step 2 must evaluate on relevant players too** (e.g. minutes_avg5 > 0 / starters),
+  not only all rows.
+- Not in features yet: availability (status / chance_of_playing) exists only from 2026-11-25 → apply as a current-season adjustment.
+- Next: step 2 baselines (weighted form, FPL `ep_next` from player_snapshots) → step 3 LightGBM per position → MLflow → `fpl.ml.xpts` → `gold.xpts`.
 
 ## Optimiser requirements (owner, 2026-11-26)
 The agent must give, each gameweek, **(1) transfers / chip advice starting from the owner's actual squad** and
