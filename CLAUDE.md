@@ -47,6 +47,15 @@ Season label from a timestamp: Jul–Jun, e.g. `2026-27`.
 Build the **xPts model first**, then resume Tipster Phases 2–4 as an enhancement to it (tip consensus as a model feature).
 Tip collection (Phase 1) keeps running on the 6-hourly schedule meanwhile, so tip history keeps accumulating.
 
+## Optimiser requirements (owner, 2026-11-26)
+The agent must give, each gameweek, **(1) transfers / chip advice starting from the owner's actual squad** and
+**(2) the best lineup** (XI, captain, vice, bench order) for the resulting squad. Not a fresh "best team" each week.
+Design: ILP (PuLP) over a 3–5 GW horizon using `gold.xpts`; inputs = current squad, selling prices, bank, free transfers,
+chips left (two sets; first set expires at the GW19 deadline). Hits cost −4 per extra transfer. Only the first GW of the
+plan is recommended; re-plan every week. Chips are evaluated by re-solving with each chip (WC/FH = squad unconstrained,
+BB = bench counts, TC = captain ×3) and recommended only if the gain beats a keep-it threshold.
+Squad data: public `entry/{team_id}/event/{gw}/picks/` + `entry/{team_id}/transfers/` (purchase prices → selling prices).
+
 ## Tipster Accuracy feature (spec pasted by owner on 2026-11-26)
 Phased; **stop after each phase and wait for go-ahead**. Copyright: raw text only in private bronze; silver/gold/app
 store tip facts + URL only. No look-ahead: a tip counts only if `published_at < deadline` of its gameweek.
