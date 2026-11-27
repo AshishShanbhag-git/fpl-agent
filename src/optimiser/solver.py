@@ -25,10 +25,10 @@ KEEP_VALUE = {"wildcard": 12.0, "freehit": 8.0, "bboost": 10.0, "3xc": 6.0}
 CHIP_NAMES = {"wildcard": "Wildcard", "freehit": "Free Hit", "bboost": "Bench Boost", "3xc": "Triple Captain"}
 
 
-def prune(players, owned, keep=None):
-    """Shrink the pool so each solve takes seconds: owned players + the best and the cheapest per position."""
+def prune(players, owned, keep=None, extra=()):
+    """Shrink the pool so each solve takes seconds: owned players (+ `extra`) + the best and cheapest per position."""
     keep = keep or {"GKP": 12, "DEF": 40, "MID": 45, "FWD": 25}
-    chosen = set(owned)
+    chosen = set(owned) | (set(extra) & set(players))
     for pos, n in keep.items():
         group = [p for p, d in players.items() if d["position"] == pos]
         chosen |= set(sorted(group, key=lambda p: -sum(players[p]["xpts"].values()))[:n])
@@ -37,7 +37,8 @@ def prune(players, owned, keep=None):
 
 
 def solve(players, squad, selling_price, bank, free_transfers, gws, chip=None, chip_gw=None,
-          decay=0.9, bench_weight=0.1, ft_value=1.5, hit_cost=4, max_ft=5, time_limit=120):
+          decay=0.9, bench_weight=0.1, ft_value=1.5, hit_cost=4, max_ft=5, time_limit=120,
+          must_have=(), exclude=()):
     """Best plan over `gws` starting from `squad` (15 player ids).
 
     players: {id: {"name", "position", "team", "price" (tenths, buy price now), "xpts": {gw: xpts}}}
@@ -46,6 +47,8 @@ def solve(players, squad, selling_price, bank, free_transfers, gws, chip=None, c
     decay: weight of each later gameweek (forecasts get less reliable). bench_weight: value of a bench player's xPts
     (covers auto-subs). ft_value: xPts value of each free transfer still banked at the end (stops the solver
     spending free transfers on tiny gains in the last gameweek of the horizon).
+    must_have / exclude: player ids that must be in / must stay out of the squad in every gameweek ("what if I
+    keep X?", "what if I never buy Y?"). A must_have player missing from `players` makes the problem infeasible.
     """
     P, owned = list(players), set(squad)
     sell = {p: selling_price[p] if p in owned else players[p]["price"] for p in P}
@@ -65,6 +68,16 @@ def solve(players, squad, selling_price, bank, free_transfers, gws, chip=None, c
     ft = pulp.LpVariable.dicts("ft", list(gws) + ["end"], lowBound=0, upBound=max_ft, cat="Integer")
     fh = pulp.LpVariable.dicts("fh", P, cat=B) if chip == "freehit" else None   # one-week Free Hit squad
     m += ft[gws[0]] == free_transfers
+    missing = set(must_have) - set(P)
+    if missing:
+        raise ValueError(f"must_have players not in the pool: {sorted(missing)}")
+    for t in gws:
+        for p in must_have:
+            m += x[p][t] == 1
+        for p in set(exclude) & set(P):
+            m += x[p][t] == 0
+            if fh is not None:
+                m += fh[p] == 0
 
     def squad_rules(own, label):
         m.addConstraint(pulp.lpSum(own[p] for p in P) == 15, f"size_{label}")

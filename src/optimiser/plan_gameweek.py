@@ -41,7 +41,7 @@ if not TEAM_ID.isdigit():
 
 ROOT = Path(dbutils.widgets.get("bundle_root") or Path.cwd().parents[1])
 sys.path.insert(0, str(ROOT / "src" / "optimiser"))
-import fpl_entry as E  # noqa: E402
+import inputs as I  # noqa: E402
 import solver as S  # noqa: E402
 
 API = "https://fantasy.premierleague.com/api"
@@ -55,21 +55,11 @@ def get(path):
     return r.json()
 
 
-boot = get("bootstrap-static/")          # live prices + injury status (prices change daily ~01:30 UK)
-history = get(f"entry/{TEAM_ID}/history/")
-transfers = get(f"entry/{TEAM_ID}/transfers/")
-picks = get(f"entry/{TEAM_ID}/event/{E.squad_event(history)}/picks/")
-
-elements = {e["id"]: e for e in boot["elements"]}
-now_cost = {p: e["now_cost"] for p, e in elements.items()}
-start_price = {p: e["now_cost"] - e["cost_change_start"] for p, e in elements.items()}
-state = E.starting_state(history, picks, transfers, now_cost, start_price)
+boot, state = I.fetch_team(get, TEAM_ID)   # live prices + injury status (prices change daily ~01:30 UK)
 if FT_OVERRIDE:
     state["free_transfers"] = int(FT_OVERRIDE)
-next_gw = next(ev["id"] for ev in boot["events"] if ev["is_next"])
-assert next_gw == state["next_gw"], f"team history ends at GW{state['next_gw'] - 1} but the next GW is {next_gw}"
+next_gw, chips = state["next_gw"], state["chips"]
 GWS = list(range(next_gw, min(next_gw + HORIZON, 39)))
-chips = E.chips_available(history, next_gw)
 print(f"GW{next_gw}: bank £{state['bank'] / 10:.1f}m, {state['free_transfers']} free transfer(s), chips {chips}")
 
 # COMMAND ----------
@@ -94,26 +84,8 @@ xpts = {}
 for r in xp_rows:
     xpts.setdefault(r.player_id, {})[r.gameweek] = 0.0 if r.n_fixtures == 0 else float(r.xpts)
 
-STATUS_FACTOR = {"a": 1.0, "d": 0.5, "i": 0.0, "s": 0.0, "u": 0.0, "n": 0.0}
-
-
-def availability(e, i):
-    cop = e["chance_of_playing_next_round"]
-    f0 = cop / 100 if cop is not None else STATUS_FACTOR.get(e["status"], 1.0)
-    if e["status"] in ("u", "n"):
-        return f0
-    return f0 + (1 - f0) * min(i, 2) / 2
-
-
-POS = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
 TEAMS = {t["id"]: t["short_name"] for t in boot["teams"]}
-players = {}
-for p, e in elements.items():
-    if p not in xpts and p not in state["squad"]:
-        continue
-    players[p] = {"name": e["web_name"], "position": POS[e["element_type"]], "team": e["team"],
-                  "price": e["now_cost"],
-                  "xpts": {t: xpts.get(p, {}).get(t, 0.0) * availability(e, i) for i, t in enumerate(GWS)}}
+players = I.build_players(boot, xpts, GWS, state["squad"])
 pool = S.prune(players, state["squad"])
 print(f"{len(players)} players with xPts; {len(pool)} in the solver's pool")
 
@@ -121,7 +93,7 @@ print(f"{len(players)} players with xPts; {len(pool)} in the solver's pool")
 
 started = datetime.now(timezone.utc)
 plan, chip_evals, base = S.plan_with_chips(pool, state["squad"], state["selling_price"], state["bank"],
-                                     state["free_transfers"], GWS, chips, E.last_gw_for_chips(next_gw))
+                                     state["free_transfers"], GWS, chips, state["last_chip_gw"])
 print(f"solved in {(datetime.now(timezone.utc) - started).total_seconds():.0f}s")
 
 # Baseline for comparison: keep the squad, no transfers, best lineup.

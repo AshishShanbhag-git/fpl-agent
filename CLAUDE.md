@@ -126,6 +126,22 @@ Squad data: public `entry/{team_id}/event/{gw}/picks/` + `entry/{team_id}/transf
 - First run 2026-11-26 on the owner's team (id passed at run time; not in repo): read 2 FTs, £0.9m, chips WC/FH/BB left
   (TC used GW3); recommended Wildcard (+23.2 xPts over GW12-16 vs best no-chip plan; bar 7.5). ~70 s per run.
 
+## Agent progress
+- Plan (owner said "build agent" 2026-11-27): step 1 tools + loop (done), step 2 MLflow tracing + golden-set eval,
+  step 3 Streamlit Databricks App.
+- LLMs on this workspace (Foundation Model APIs, pay-per-token, no Claude): gpt-oss-120b/20b, llama-4-maverick,
+  llama-3-3-70b, llama-3-1-8b, qwen35-122b, qwen3-next-80b, gemma-3-12b; all four tested can tool-call.
+  Default `databricks-gpt-oss-120b` (returns content as a list of reasoning/text blocks → `text_of`).
+- Step 1 (2026-11-27) done: `src/agent/fpl_data.py` (loads players/xpts/fixtures/gameweeks/30-day news once into
+  pandas via warehouse or Spark; forgiving name match incl. "Bruno Fernandes" → B.Fernandes), `src/agent/tools.py`
+  (get_my_squad, get_recommendation, run_optimizer with must_have/exclude/chip/free_transfers/horizon, get_player,
+  top_players, get_fixtures, get_news; errors returned as {"error"}), `src/agent/agent.py` (loop, max 8 steps, one
+  retry on empty answer, strict grounding prompt). Tests: `tests/test_agent.py` (fake data + scripted LLM).
+  Shared `src/optimiser/inputs.py` (fetch_team, availability, build_players) used by notebook + tools.
+- Lesson from first live test: when a tool returned only names, gpt-oss invented fixtures, xPts and positions.
+  Fix = tools return full player "cards" (team name, position, price, xPts, fixture text, status) so nothing is
+  missing. Keep this rule for new tools.
+
 ## Tipster Accuracy feature (spec pasted by owner on 2026-11-26)
 Phased; **stop after each phase and wait for go-ahead**. Copyright: raw text only in private bronze; silver/gold/app
 store tip facts + URL only. No look-ahead: a tip counts only if `published_at < deadline` of its gameweek.

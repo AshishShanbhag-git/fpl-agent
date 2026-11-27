@@ -33,6 +33,10 @@ src/
   optimiser/fpl_entry.py  # Team state from the public FPL API: selling prices, free transfers, chips left (unit tested)
   optimiser/solver.py     # Integer programme (PuLP): multi-GW transfers + chips + XI/captain/bench (unit tested)
   optimiser/plan_gameweek.py # Notebook (job fpl-optimise): runs the solver for a team -> fpl.gold.recommendations
+  optimiser/inputs.py     # Shared: team state + availability-adjusted xPts -> solver inputs
+  agent/fpl_data.py       # Agent data: small tables loaded once (warehouse or Spark), player name matching
+  agent/tools.py          # Agent tools (squad, recommendation, what-if optimiser, player, rankings, fixtures, news)
+  agent/agent.py          # Tool-calling loop on a Databricks Foundation Model endpoint; grounding rules
   tips/tiplib.py          # Tip-article fetcher logic (pure Python, unit tested)
   tips/fetch_tips.py      # Notebook: discover + fetch tip articles from approved sources → private Volume
 config/tip_sources.yml    # Approved tip sources (robots.txt + terms reviewed), with reasons for rejected ones

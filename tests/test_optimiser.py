@@ -155,5 +155,17 @@ class SolverTest(unittest.TestCase):
         self.assertEqual(plan["gameweeks"][0]["chip"], "3xc")
 
 
+    def test_must_have_and_exclude(self):
+        free = S.solve(self.players, self.squad, self.sell, 100, 1, [1, 2], chip="wildcard", chip_gw=1)
+        star = max(free["gameweeks"][0]["squad"], key=lambda p: self.players[p]["xpts"][1])
+        r = S.solve(self.players, self.squad, self.sell, 100, 1, [1, 2], chip="wildcard", chip_gw=1, exclude=[star])
+        self.assertNotIn(star, r["gameweeks"][0]["squad"] + r["gameweeks"][1]["squad"])
+        keep = self.squad[0]
+        r = S.solve(self.players, self.squad, self.sell, 100, 1, [1, 2], chip="wildcard", chip_gw=1, must_have=[keep])
+        self.assertTrue(all(keep in g["squad"] for g in r["gameweeks"]))
+        with self.assertRaises(ValueError):
+            S.solve(self.players, self.squad, self.sell, 100, 1, [1], must_have=[99999])
+
+
 if __name__ == "__main__":
     unittest.main()
